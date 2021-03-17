@@ -1,4 +1,4 @@
-add_executable(select
+add_executable(${PROJECT_NAME}-server
     src/async_file_descriptor.hpp
     src/composite_async_ops.hpp
     src/defer_reactor_adapter.hpp
@@ -10,8 +10,12 @@ add_executable(select
     src/tcp_listener.hpp
     src/thread_pool.cpp
     src/thread_pool.hpp
+	src/file_descriptor.cpp
+	src/file_descriptor.hpp
+	src/errno.hpp
+	src/charconv.hpp
+	src/format.hpp
+	src/pipe.hpp
 )
 
-target_link_libraries(select PRIVATE ce::utils)
-
-ntc_target(select)
+target_link_libraries(${PROJECT_NAME}-server PUBLIC Boost::headers)
