@@ -6,10 +6,10 @@ project(hse-asio
 			LANGUAGES CXX
 )
 
-set_property(GLOBAL 
-            PROPERTY CMAKE_CXX_KNOWN_FEATURES cxx_std_20
-)
-set(CMAKE_CXX_EXTENSIONS OFF)
+#set_property(GLOBAL
+#            PROPERTY CMAKE_CXX_KNOWN_FEATURES cxx_std_20
+#)
+#set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Boost 1.75 REQUIRED COMPONENTS chrono container context log thread)
 

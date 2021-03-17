@@ -17,7 +17,8 @@ void async_read(AsyncReadStream& stream,Reactor& reactor,std::span<std::byte> bu
         if(e||!n||n==buf.size())
             reactor.get_executor()(execution_kind::dispatch,[e=e?std::move(e):n?std::exception_ptr{}:
                                    std::make_exception_ptr(std::system_error{
-                                       std::make_error_code(std::errc::broken_pipe)})
+                                       std::make_error_code(std::errc::broken_pipe)}),
+                                   cb=std::move(cb)
                     ]() mutable {
                 cb(std::move(e));
             });
