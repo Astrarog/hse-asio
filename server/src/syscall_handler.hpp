@@ -2,8 +2,7 @@
 #define SYSCALLS_HPP
 #include <string>
 #include <functional>
-
-#include <errno.h>
+#include <cerrno>
 
 
 namespace hse {

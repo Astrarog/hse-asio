@@ -1,9 +1,12 @@
 add_executable(${PROJECT_NAME}-server
-    src/main.cpp
-    src/rings.hpp
-    src/syscall_handler.hpp
     src/io_uring_driver.cpp    src/io_uring_driver.hpp
     src/io_uring.cpp           src/io_uring.hpp
+    src/file_descriptor.hpp
+    src/syscall_handler.hpp
+    src/io_operation.hpp
+    src/rings.hpp
+    src/main.cpp
+
 
 )
 

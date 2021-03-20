@@ -1,14 +1,17 @@
 #include <string>
 #include <system_error>
+#include <span>
+#include <mutex>
 
 #include <sys/mman.h>
 #include <unistd.h>
 
 //#include <boost/log/trivial.hpp>
 
+#include "syscall_handler.hpp"
 #include "io_uring_driver.hpp"
 #include "io_uring.hpp"
-#include "syscall_handler.hpp"
+#include "io_operation.hpp"
 
 namespace hse {
 
@@ -43,8 +46,8 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
     debug_check_features(params_.features);
 
     // At this point kernel has written the info about rings
-    sq_ring.size = params_.sq_off.array + params_.sq_entries * sizeof (unsigned);
-    cq_ring.size = params_.cq_off.cqes  + params_.cq_entries * sizeof (io_uring_cqe);
+    std::size_t sq_ring_size = params_.sq_off.array + params_.sq_entries * sizeof (unsigned);
+    std::size_t cq_ring_size = params_.cq_off.cqes  + params_.cq_entries * sizeof (io_uring_cqe);
 
 
     std::uintptr_t sq_ring_ptr =
@@ -52,7 +55,7 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
             syscall_handler(mmap)
             .set_error_return_value(MAP_FAILED)
             .set_description("sq_ring mmap")
-            .run(nullptr, sq_ring.size, PROT_READ | PROT_WRITE,
+            .run(nullptr, sq_ring_size, PROT_READ | PROT_WRITE,
                 MAP_SHARED | MAP_POPULATE, uring_fd, IORING_OFF_SQ_RING)
         );
 
@@ -71,7 +74,7 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
                 syscall_handler(mmap)
                 .set_error_return_value(MAP_FAILED)
                 .set_description("io_uring_setup")
-                .run(nullptr, cq_ring.size, PROT_READ | PROT_WRITE,
+                .run(nullptr, cq_ring_size, PROT_READ | PROT_WRITE,
                     MAP_SHARED | MAP_POPULATE, uring_fd, IORING_OFF_CQ_RING)
             );
     }
@@ -79,32 +82,69 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
     std::uintptr_t sqes_size = params_.sq_entries * sizeof(struct io_uring_sqe);
 
     std::uintptr_t sqes_ptr =
-        reinterpret_cast<std::uintptr_t>(    std::uintptr_t sqes_ptr =
-            reinterpret_cast<std::uintptr_t>(
-                syscall_handler(mmap)
-                .set_error_return_value(MAP_FAILED)
-                .set_description("sqes mmap")
-                .run(nullptr, sqes_ptr, PROT_READ | PROT_WRITE,
-                    MAP_SHARED | MAP_POPULATE, uring_fd, IORING_OFF_SQES)
-            );
+        reinterpret_cast<std::uintptr_t>(
             syscall_handler(mmap)
             .set_error_return_value(MAP_FAILED)
             .set_description("sqes mmap")
-            .run(nullptr, sqes_ptr, PROT_READ | PROT_WRITE,
+            .run(nullptr, sqes_size, PROT_READ | PROT_WRITE,
                 MAP_SHARED | MAP_POPULATE, uring_fd, IORING_OFF_SQES)
         );
 
-    //we can safely copy ring info
-    sq_ring.info = params_.sq_off;
-    cq_ring.info = params_.cq_off;
+    sq_ring.head         = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.head        );
+    sq_ring.tail         = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.tail        );
+    sq_ring.ring_mask    = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.ring_mask   );
+    sq_ring.ring_entries = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.ring_entries);
+    sq_ring.flags        = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.flags       );
+    sq_ring.dropped      = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.dropped     );
+    sq_ring.array        = reinterpret_cast<unsigned*>(sq_ring_ptr + params_.sq_off.array       );
 
-    sq_ring.ptr = sq_ring_ptr;
-    cq_ring.ptr = cq_ring_ptr;
+
+    cq_ring.head         = reinterpret_cast<unsigned*>(cq_ring_ptr + params_.cq_off.head        );
+    cq_ring.tail         = reinterpret_cast<unsigned*>(cq_ring_ptr + params_.cq_off.tail        );
+    cq_ring.ring_mask    = reinterpret_cast<unsigned*>(cq_ring_ptr + params_.cq_off.ring_mask   );
+    cq_ring.ring_entries = reinterpret_cast<unsigned*>(cq_ring_ptr + params_.cq_off.ring_entries);
+    cq_ring.overflow     = reinterpret_cast<unsigned*>(cq_ring_ptr + params_.cq_off.overflow    );
+
+
+    sq_ring.size = sq_ring_size;
+    cq_ring.size = cq_ring_size;
 
     sq_ring.entries = reinterpret_cast<io_uring_sqe*>(sqes_ptr);
-    cq_ring.entries = reinterpret_cast<io_uring_cqe*>(cq_ring.ptr + cq_ring.info.cqes);
+    cq_ring.entries = reinterpret_cast<io_uring_cqe*>(cq_ring_ptr + params_.cq_off.cqes);
 
 }
+
+std::uint64_t io_uring_driver::register_operation(io_operation op) {
+
+    std::unique_lock guard{lock};
+
+    unsigned tail = *(sq_ring.tail);
+    unsigned index = tail & *(sq_ring.ring_mask);
+    // at this point we know the position of empty SQE, so we can hold it
+    ++(*(sq_ring.tail));
+
+    guard.unlock();
+
+    io_uring_sqe& sqe = sq_ring.entries[index];
+
+    sqe.opcode = static_cast<int>(op.type);
+    sqe.fd = op.fd;
+    sqe.off = op.offest;
+    sqe.addr = reinterpret_cast<std::uintptr_t>(op.data.data());
+    sqe.len = op.data.size();
+
+    sqe.flags = 0;
+    sqe.ioprio = 0;
+    sqe.rw_flags = 0;
+    sqe.__pad2[0] = sqe.__pad2[1] = sqe.__pad2[2] = 0;
+
+    // token to register the operation
+    token_t token = last_token.fetch_add(1, std::memory_order_acquire);
+    sqe.user_data = token;
+    return token;
+
+}
+
 
 io_uring_driver::~io_uring_driver(){
     close(uring_fd);

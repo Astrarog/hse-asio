@@ -5,22 +5,37 @@
 
 #include "io_uring.hpp"
 
+namespace hse {
 
-struct sq_ring_t{
-    io_sqring_offsets info;
+struct ring_t {
+
+    unsigned* head;
+    unsigned* tail;
+    unsigned* ring_mask;
+    unsigned* ring_entries;
+
+};
+
+struct sq_ring_t: public ring_t {
+
+    unsigned* flags;
+    unsigned* dropped;
+    unsigned* array;
+
     std::size_t size;
-    std::uintptr_t ptr;
     io_uring_sqe* entries;
 
 };
 
 
-struct cq_ring_t{
-    io_cqring_offsets info;
+struct cq_ring_t: public ring_t {
+
+    unsigned* overflow;
+
     std::size_t size;
-    std::uintptr_t ptr;
     io_uring_cqe* entries;
+
 };
 
-
+}
 #endif // RINGS_HPP
