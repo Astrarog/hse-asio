@@ -10,6 +10,7 @@
 namespace hse {
 
 enum class io_operation_type {
+      noop = IORING_OP_NOP,
       read = IORING_OP_READ,
       write = IORING_OP_WRITE
 };

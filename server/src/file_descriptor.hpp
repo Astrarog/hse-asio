@@ -12,13 +12,15 @@ namespace hse {
 class file_descriptor
 {
 protected:
-    int fd;
+    int fd=-1;
 
 public:
     void close() {
         ::close(fd);
         fd=-1;
     }
+
+    inline file_descriptor(){}
 
     inline file_descriptor(int desc): fd{desc} {
         if (this->fd<0)

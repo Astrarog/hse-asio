@@ -4,7 +4,7 @@
 #include <vector>
 #include <span>
 #include <cstddef>
-#include <queue>
+#include <unordered_set>
 #include <mutex>
 #include <atomic>
 
@@ -24,27 +24,33 @@ class io_uring_driver
 {
     using token_t = std::uint64_t;
 
-    int uring_fd;
+    file_descriptor uring_fd;
     sq_ring_t sq_ring;
     cq_ring_t cq_ring;
 
-    std::atomic<token_t> last_token = 0;
-    std::deque<token_t> pending_operations;
+    token_t post_last_registered = 0;
+    token_t post_last_submitted = 0;
+    token_t post_last_done = 0;
+    std::unordered_set<token_t> pending_operations;
 
-    std::mutex lock;
+    std::mutex lock_registration;
+    std::mutex lock_submition;
+
 
 public:
     io_uring_driver(std::uint32_t entries=4096,
                     std::optional<io_uring_setups> params = std::nullopt);
-    ~io_uring_driver();
 
-    std::uint64_t register_operation(io_operation);
+    std::uint64_t register_op(io_operation = {io_operation_type::noop, {}});
 
-    std::uint64_t register_operation(std::vector<io_operation>);
+    // TO DO ??
+    std::uint64_t register_op(std::vector<io_operation>);
 
-    io_uring_driver& wait_for_token();
+    io_uring_driver& initiate(token_t operation_token);
+    io_uring_driver& initiate();
 
-    io_uring_driver& wait_for_all();
+    io_uring_driver& wait(token_t operation_token);
+    io_uring_driver& wait();
 
 };
 

@@ -2,6 +2,7 @@
 #include <system_error>
 #include <span>
 #include <mutex>
+#include <limits>
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -114,17 +115,20 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
 
 }
 
-std::uint64_t io_uring_driver::register_operation(io_operation op) {
-
-    std::unique_lock guard{lock};
-
-    unsigned tail = *(sq_ring.tail);
-    unsigned index = tail & *(sq_ring.ring_mask);
+std::uint64_t io_uring_driver::register_op(io_operation op) {
+    // TO DO : OVERFLOW CHECK
+    unsigned tail;
+    token_t token;
+    {
+        std::lock_guard guard{lock_registration};
+        tail = *(sq_ring.tail);
+        ++(*(sq_ring.tail));
+        token = (post_last_registered)++;
+    }
     // at this point we know the position of empty SQE, so we can hold it
-    ++(*(sq_ring.tail));
+    // and we have registered out operation, so we can fill operation data
 
-    guard.unlock();
-
+    unsigned index = tail & *(sq_ring.ring_mask);
     io_uring_sqe& sqe = sq_ring.entries[index];
 
     sqe.opcode = static_cast<int>(op.type);
@@ -138,16 +142,51 @@ std::uint64_t io_uring_driver::register_operation(io_operation op) {
     sqe.rw_flags = 0;
     sqe.__pad2[0] = sqe.__pad2[1] = sqe.__pad2[2] = 0;
 
-    // token to register the operation
-    token_t token = last_token.fetch_add(1, std::memory_order_acquire);
     sqe.user_data = token;
+    // opeartion have prepared, so we cat return the operation token
+    // which can be used to initiate and wait for operation completion
+
+    //BOOST_LOG_TRIVIAL(debug) << "registered new operation with token=" << token << " at adderss " << &sqe;
     return token;
 
 }
 
+io_uring_driver& io_uring_driver::initiate(token_t op){
 
-io_uring_driver::~io_uring_driver(){
-    close(uring_fd);
+    // check whether any pending operation exists
+    if(post_last_submitted == post_last_registered)
+        return *this;
+
+
+    // no need to check whether post_last_registered == post_last_submitted in overflow
+    // cause ring buffer only 4096 entries long
+    std::lock_guard guard{lock_submition};
+
+    bool was_token_overflow = (post_last_registered < post_last_submitted);
+
+    bool was_registered = (op < post_last_registered)
+                       || (was_token_overflow && (op >= post_last_submitted));
+
+    // check if operation refers to pending (and not submited) operation
+    if (was_registered){
+        // operation was registered by someone and he wants to initiate it
+
+
+        // calculating how many opearions should be submitted to kernel through io_uring
+        std::size_t to_submit  = [&]{
+            if (!was_token_overflow)
+                return op - post_last_submitted + 1;
+            else{
+                std::size_t to_submit_top    = (std::numeric_limits<token_t>::max() - post_last_submitted) +1;
+                std::size_t to_submit_bottom = op +1;
+                return to_submit_top + to_submit_bottom;
+            }
+        }();
+        post_last_submitted = op+1;
+        io_uring_enter(uring_fd, 1, to_submit, 0, nullptr);
+    }
+    // need unlock
+    return *this;
 }
 
 }
