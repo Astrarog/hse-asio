@@ -27,6 +27,7 @@ public:
             throw std::system_error(errno,std::system_category(), "Negative file descriptor");
     }
 
+    file_descriptor(const file_descriptor& other) = default;
     file_descriptor(file_descriptor&& other) noexcept
         : fd{std::exchange(other.fd,-1)}
     {}

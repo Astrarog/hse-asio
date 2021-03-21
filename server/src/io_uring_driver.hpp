@@ -35,6 +35,7 @@ class io_uring_driver
 
     std::mutex lock_registration;
     std::mutex lock_submition;
+    std::mutex lock_wait;
 
 
 public:
@@ -47,10 +48,10 @@ public:
     std::uint64_t register_op(std::vector<io_operation>);
 
     io_uring_driver& initiate(token_t operation_token);
-    io_uring_driver& initiate();
+    io_uring_driver& initiate_all();
 
     io_uring_driver& wait(token_t operation_token);
-    io_uring_driver& wait();
+    io_uring_driver& wait_all();
 
 };
 

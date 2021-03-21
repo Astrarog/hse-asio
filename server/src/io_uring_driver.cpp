@@ -7,7 +7,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-//#include <boost/log/trivial.hpp>
+#include <boost/log/trivial.hpp>
 
 #include "syscall_handler.hpp"
 #include "io_uring_driver.hpp"
@@ -18,11 +18,11 @@ namespace hse {
 
 
 void debug_check_features(std::uint32_t feat){
-//    BOOST_LOG_TRIVIAL(debug) << "io_uring features:";
+    BOOST_LOG_TRIVIAL(debug) << "io_uring features:";
 
-//    // only IORING_FEAT_SINGLE_MMAP is supported in 5.12 kernel
-//    if(IORING_FEAT_SINGLE_MMAP & feat)
-//        BOOST_LOG_TRIVIAL(debug) << "    IORING_FEAT_SINGLE_MMAP is enabled";
+    // only IORING_FEAT_SINGLE_MMAP is supported in 5.12 kernel
+    if(IORING_FEAT_SINGLE_MMAP & feat)
+        BOOST_LOG_TRIVIAL(debug) << "    IORING_FEAT_SINGLE_MMAP is enabled";
 }
 
 
@@ -40,9 +40,9 @@ io_uring_driver::io_uring_driver(std::uint32_t entries,
                     .set_description("io_uring_setup")
                     .run(entries, &params_);
 
-//    BOOST_LOG_TRIVIAL(debug) << "io_uring setup params:";
-//    BOOST_LOG_TRIVIAL(debug) << "    sq_entries = " <<  params_.sq_entries;
-//    BOOST_LOG_TRIVIAL(debug) << "    cq_entries = " <<  params_.cq_entries;
+    BOOST_LOG_TRIVIAL(debug) << "io_uring setup params:";
+    BOOST_LOG_TRIVIAL(debug) << "    sq_entries = " <<  params_.sq_entries;
+    BOOST_LOG_TRIVIAL(debug) << "    cq_entries = " <<  params_.cq_entries;
 
     debug_check_features(params_.features);
 
@@ -131,6 +131,10 @@ std::uint64_t io_uring_driver::register_op(io_operation op) {
     unsigned index = tail & *(sq_ring.ring_mask);
     io_uring_sqe& sqe = sq_ring.entries[index];
 
+    // needed because of io_uring implementation
+    sq_ring.array[index] = index;
+
+
     sqe.opcode = static_cast<int>(op.type);
     sqe.fd = op.fd;
     sqe.off = op.offest;
@@ -142,11 +146,12 @@ std::uint64_t io_uring_driver::register_op(io_operation op) {
     sqe.rw_flags = 0;
     sqe.__pad2[0] = sqe.__pad2[1] = sqe.__pad2[2] = 0;
 
+
     sqe.user_data = token;
     // opeartion have prepared, so we cat return the operation token
     // which can be used to initiate and wait for operation completion
 
-    //BOOST_LOG_TRIVIAL(debug) << "registered new operation with token=" << token << " at adderss " << &sqe;
+    BOOST_LOG_TRIVIAL(debug) << "registered new operation with token=" << token << " at adderss " << &sqe;
     return token;
 
 }
@@ -164,8 +169,7 @@ io_uring_driver& io_uring_driver::initiate(token_t op){
 
     bool was_token_overflow = (post_last_registered < post_last_submitted);
 
-    bool was_registered = (op < post_last_registered)
-                       || (was_token_overflow && (op >= post_last_submitted));
+    bool was_registered = (op >= post_last_submitted) && ((op < post_last_registered) || was_token_overflow);
 
     // check if operation refers to pending (and not submited) operation
     if (was_registered){
@@ -182,11 +186,96 @@ io_uring_driver& io_uring_driver::initiate(token_t op){
                 return to_submit_top + to_submit_bottom;
             }
         }();
-        post_last_submitted = op+1;
-        io_uring_enter(uring_fd, 1, to_submit, 0, nullptr);
+        BOOST_LOG_TRIVIAL(debug) << "Correct initiation operation request with token=" << op;
+        while(post_last_submitted!=op+1){
+            pending_operations.insert(post_last_submitted++);
+            BOOST_LOG_TRIVIAL(debug) << "   initiated op with token=" << post_last_submitted-1;
+        }
+
+        BOOST_LOG_TRIVIAL(debug) << "    there is " << to_submit << " operations to be submitted by apllication";
+        for (std::size_t total_consumed = 0; total_consumed<to_submit; ) {
+            int consumed = syscall_handler(io_uring_enter)
+                    .set_description("initiation of requests via io_uring_enter")
+                    .set_error_return_value(-1)
+                    (uring_fd, to_submit - total_consumed, 0, 0, nullptr);
+            BOOST_LOG_TRIVIAL(debug) << "    the kernel consumed " << consumed  << " operations";
+            total_consumed+=consumed;
+        }
     }
-    // need unlock
+
+    // may be
+    // else throw exseption
     return *this;
 }
+
+io_uring_driver& io_uring_driver::initiate_all(){
+    return this->initiate(post_last_registered - 1);
+}
+
+io_uring_driver& io_uring_driver::wait(token_t op) {
+
+    if(pending_operations.count(op)==0)
+        return *this; //already done or not initialized or junk operation
+
+    std::lock_guard guard{lock_wait};
+
+    // TO FIX
+    //bool was_token_overflow = (post_last_registered < post_last_submitted);
+    //bool was_initiated = (post_last_submitted <= op) || (was_token_overflow && (op < post_last_registered));
+
+    //if(!was_initiated)
+    //    return *this; //may be throw exseption
+    // TO FIX
+
+
+    BOOST_LOG_TRIVIAL(debug) << "Correct wait request of operation with token=" << op;
+    unsigned& head = *(cq_ring.head);
+    unsigned& tail = *(cq_ring.tail);
+    token_t observed_token;
+    do  {
+        unsigned index = head & *(cq_ring.ring_mask);
+        io_uring_cqe& cqe = cq_ring.entries[index];
+        observed_token = cqe.user_data;
+        if(head!=tail){
+            pending_operations.erase(observed_token);
+            BOOST_LOG_TRIVIAL(debug) << "   TOKEN=" << observed_token << " done";
+            BOOST_LOG_TRIVIAL(debug) << "   haed=" << head << " tail=" << tail;
+            BOOST_LOG_TRIVIAL(debug) << "   Opeation Result=" << cqe.res;
+            BOOST_LOG_TRIVIAL(debug) << "   errno?=EBADF " << (errno==EBADF);
+            if(cqe.res < 0)
+                throw std::system_error(errno, std::system_category(), "negative result operation");
+            ++head;
+        }
+    } while (observed_token != op);
+    // no need to check head!=tail cause it is guarantee that operation happens not later
+
+    BOOST_LOG_TRIVIAL(debug) << "   request with token=" << op << " completed";
+    return *this;
+}
+
+io_uring_driver& io_uring_driver::wait_all(){
+
+    BOOST_LOG_TRIVIAL(debug) << "wait_all request ";
+    while(pending_operations.size()>0) {
+        unsigned& head = *(cq_ring.head);
+        unsigned& tail = *(cq_ring.tail);
+        std::lock_guard guard{lock_wait};
+        unsigned index = head & *(cq_ring.ring_mask);
+        io_uring_cqe& cqe = cq_ring.entries[index];
+        token_t observed_token = cqe.user_data;
+        if(head!=tail){
+            pending_operations.erase(observed_token);
+            BOOST_LOG_TRIVIAL(debug) << "   TOKEN=" << observed_token << " done";
+            BOOST_LOG_TRIVIAL(debug) << "   haed=" << head << " tail=" << tail;
+            BOOST_LOG_TRIVIAL(debug) << "   Opeation result=" << cqe.res;
+            if(cqe.res < 0)
+                throw std::system_error(errno, std::system_category(), "negative result operation");
+            ++head;
+        }
+    }
+    return *this;
+
+}
+
 
 }
