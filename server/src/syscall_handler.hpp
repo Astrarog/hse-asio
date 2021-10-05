@@ -3,7 +3,7 @@
 #include <string>
 #include <functional>
 #include <cerrno>
-
+#include <optional>
 
 namespace hse {
 

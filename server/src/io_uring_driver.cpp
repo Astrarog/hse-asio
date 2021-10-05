@@ -241,7 +241,7 @@ io_uring_driver& io_uring_driver::wait(token_t op) {
             BOOST_LOG_TRIVIAL(debug) << "   TOKEN=" << observed_token << " done";
             BOOST_LOG_TRIVIAL(debug) << "   haed=" << head << " tail=" << tail;
             BOOST_LOG_TRIVIAL(debug) << "   Opeation Result=" << cqe.res;
-            BOOST_LOG_TRIVIAL(debug) << "   errno?=EBADF " << (errno==EBADF);
+            BOOST_LOG_TRIVIAL(debug) << "   errno?=EBADF " << ((-cqe.res)==EBADF);
             if(cqe.res < 0)
                 throw std::system_error(errno, std::system_category(), "negative result operation");
             ++head;

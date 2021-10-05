@@ -30,6 +30,8 @@
 # endif
 #endif
 
+namespace hse {
+
 int io_uring_setup(__u32 entries, struct io_uring_params *p){
     return syscall(__NR_io_uring_setup, entries, p);
 }
@@ -43,4 +45,7 @@ int io_uring_enter(unsigned int fd, unsigned int to_submit,
                    unsigned int min_complete, unsigned int flags,
                    sigset_t *sig){
     return syscall(__NR_io_uring_enter, fd, to_submit, min_complete, flags, sig);
+}
+
+
 }

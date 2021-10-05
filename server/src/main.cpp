@@ -14,7 +14,7 @@
 using namespace hse;
 
 int main(){
-    int fd = open("test.txt", O_WRONLY | O_CREAT | O_TRUNC);
+    int fd = open("test1.txt", O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK , 0666);
     iovec iov[3];
 
     const char *buf[] = {
@@ -34,13 +34,15 @@ int main(){
          buffer, fd, 0};
 
 
-    hse::io_uring_driver drv;
-    auto token0 = drv.register_op(write_std);
+    hse::io_uring_driver drv{4096};
+
+    auto token0 = drv.register_op();
     auto token1 = drv.register_op();
-    auto token2 = drv.register_op();
+    auto token2 = drv.register_op(write_std);
     auto token3 = drv.register_op();
-    drv.initiate(token0)
-            .wait(token0)
+
+    drv.initiate(token1)
+            .wait(token1)
             .initiate_all()
             .wait_all();
 

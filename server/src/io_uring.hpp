@@ -3,6 +3,8 @@
 #include <linux/io_uring.h>
 #include <signal.h>
 
+namespace hse {
+
 enum {
     IORING_OP_TIMEOUT_REMOVE = IORING_OP_TIMEOUT,
     IORING_OP_ACCEPT,
@@ -40,5 +42,6 @@ int io_uring_register(unsigned int fd, unsigned int opcode,
 int io_uring_enter(unsigned int fd, unsigned int to_submit,
                    unsigned int min_complete, unsigned int flags,
                    sigset_t *sig);
+}
 
 #endif // IO_URING_HPP
