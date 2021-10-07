@@ -40,21 +40,21 @@ void uring_write(io_uring* ring,
 
 }
 
-constexpr char buf[] = "The term buccaneer comes from the word boucan.\n";
+constexpr char buf[] = "The term buccaneer comes from the word boucan.123\n";
 
 int main(){
 
-    int fd = open("test1.txt", O_RDWR | O_CREAT | O_TRUNC | O_DIRECT , 0666);
+    int fd = open("test1.txt", O_RDWR | O_CREAT | O_TRUNC, 0666);
     iovec iov[3];
 
+    std::size_t bufSize = std::strlen(buf);
 
     struct io_uring ring{};
     io_uring_queue_init(4096, &ring, 0);
 
-    uring_write(&ring, fd, buf, std::strlen(buf));
-    uring_write(&ring, fd, buf, std::strlen(buf));
+    uring_write(&ring, fd, buf, bufSize);
+    uring_write(&ring, fd, buf, bufSize);
 
-    fsync(fd);
 
     io_uring_queue_exit(&ring);
 }
