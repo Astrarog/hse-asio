@@ -6,6 +6,7 @@
 #include <functional>
 #include <vector>
 #include <unordered_map>
+#include <memory>
 
 #include <liburing.h>
 
@@ -18,6 +19,7 @@ namespace hse {
 
 class worker
 {
+public:
     using io_result_t = std::uint32_t;
     using token_t = std::uint64_t;
 
@@ -27,11 +29,12 @@ class worker
     // TO DO array<iovec>
     // TO DO FIXED_BUFFERS
 
-    using handler_t = std::function<token_t(io_result_t)>;
+    using handler_t = std::function<void(io_result_t)>;
 
+private:
     io_uring ring;
     token_t awailable_token=0;
-    std::unordered_map<token_t, handler_t> token_table;
+    std::unordered_map<token_t, std::shared_ptr<handler_t>> token_table;
     cqe_receiver compilted_tasks_receiver{ring};
 
 
@@ -41,14 +44,16 @@ public:
     ~worker();
 
 
-    worker& async_accept(handler_t&& callback,
-                         int fd,
+    worker& async_accept(int fd,
                          sockaddr * addr,
-                         socklen_t* addr_len);
+                         socklen_t* addr_len,
+                         std::shared_ptr<handler_t> callback);
 
-    worker& next_task();
+    worker& get_next_complitted();
 
-//    worker& async_read_some(std::span<std::byte> buffer, handler_t&& callback);
+    worker& async_read_some (int fd, std::span<std::byte> buffer, std::shared_ptr<handler_t> callback);
+
+    worker& async_write_some(int fd, std::span<std::byte> buffer, std::shared_ptr<handler_t> callback);
 
 };
 

@@ -1,3 +1,5 @@
+#include <boost/log/trivial.hpp>
+
 #include "receiver.hpp"
 
 namespace hse {
