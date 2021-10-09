@@ -1,10 +1,10 @@
 add_executable(${PROJECT_NAME}-server
     src/file_descriptor.hpp
     src/syscall_handler.hpp
-    src/receiver.hpp
     src/main.cpp
+    src/receiver.hpp                src/receiver.cpp
     src/server.cpp                  src/server.hpp
-    src/submitter.cpp               src/submitter.hpp
+    src/worker.cpp                  src/worker.hpp
 
 )
 
