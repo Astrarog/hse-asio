@@ -11,7 +11,12 @@ add_executable(${PROJECT_NAME}-server
 target_compile_features(${PROJECT_NAME}-server PRIVATE cxx_std_20)
 
 set_target_properties(${PROJECT_NAME}-server PROPERTIES CXX_EXTENSIONS OFF)
-
+target_compile_options(${PROJECT_NAME}-server
+        PRIVATE
+                $<$<CXX_COMPILER_ID:GNU>:
+                        -fcoroutines
+                >
+)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(liburing REQUIRED IMPORTED_TARGET liburing)

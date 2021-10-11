@@ -30,7 +30,7 @@ int initialize_socket(){
 
 
     sockaddr_in6 ipv6_addr{};
-    ipv6_addr.sin6_addr = in6addr_any;
+    ipv6_addr.sin6_addr = in6addr_loopback;
     ipv6_addr.sin6_port = 8888;
     bind(sock_fd, reinterpret_cast<sockaddr*>(&ipv6_addr), sizeof (ipv6_addr));
 
@@ -47,24 +47,24 @@ int main(){
     hse::worker sait_worker{};
 
 //    char write_buf[64];
-    char* read_buf = new char[64];
+    char* read_buf = new char[32 * 1024];
 
     auto incoming_sock = std::make_shared<sockaddr_in6>();
     auto sock_len = std::make_shared<socklen_t>(sizeof (sockaddr_in6));
 
-    using handler_t = std::function<void(hse::worker::io_result_t)>;
+    using handler_t = hse::worker::handler_t;
 
     std::shared_ptr<handler_t> session_read;
 
 
     std::shared_ptr<handler_t> accept_handler;
-    accept_handler = std::make_shared<handler_t>([&](hse::worker::io_result_t res){
+    accept_handler = std::make_shared<handler_t>([&](hse::worker&, hse::worker::io_result_t res){
         if (res<0)
             throw std::system_error({errno, std::system_category()}, "Negative accept");
         sait_worker.async_accept(sock_fd, reinterpret_cast<sockaddr*>(incoming_sock.get()), sock_len.get(), accept_handler);
 
         int session_fd = res;
-        session_read = std::make_shared<handler_t>([&, session_fd](hse::worker::io_result_t res){
+        session_read = std::make_shared<handler_t>([&, session_fd](hse::worker&, hse::worker::io_result_t res){
             if (res<0)
                 throw std::system_error({errno, std::system_category()}, "Negative read");
             if (res==0)
@@ -77,8 +77,7 @@ int main(){
     });
 
     sait_worker.async_accept(sock_fd, reinterpret_cast<sockaddr*>(incoming_sock.get()), sock_len.get(), accept_handler);
-    do{
-        sait_worker.get_next_complitted();
-    }while(1);
+
+    sait_worker.event_loop();
 
 }

@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <cerrno>
+#include <system_error>
 #include <variant>
 
 namespace hse {
@@ -59,8 +60,16 @@ namespace hse {
 
 template<class R, class... Args >
 class syscall_handler{
+public:
+    enum SH_ERROR_CONDITION{
+        SINGLE_VALUE,
+        PREDICATE,
+        NO_CONITION
+    };
+
 private:
-    std::string error_description="Error";
+    using err_pred_t = std::function<bool(R)>;
+    std::string error_description="Syscall error";
     SH_ERROR_CONDITION error_contion_type = NO_CONITION;
     std::function<R (Args...)> syscall;
     std::variant<R,
@@ -71,24 +80,18 @@ private:
     void check_error(R ret){
         switch (error_contion_type) {
             case SINGLE_VALUE :
-                if((*error_condition)() == ret)
+                if(std::get<R>(error_condition) == ret)
                     throw std::system_error({errno, std::system_category()}, error_description);
                 break;
 
             case PREDICATE :
-                if((*error_condition)(ret))
+                if(std::get<std::function<bool(R)>>(error_condition) (ret))
                     throw std::system_error({errno, std::system_category()}, error_description);
                 break;
 
         }
     }
 public:
-
-    enum SH_ERROR_CONDITION{
-        SINGLE_VALUE,
-        PREDICATE,
-        NO_CONITION
-    };
 
     syscall_handler(R sys(Args...)): syscall(sys){}
 
