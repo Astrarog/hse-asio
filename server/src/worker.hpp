@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <memory>
 #include <array>
+#include <iostream>
 
 #include <liburing.h>
 
@@ -22,6 +23,7 @@ struct single_io
     file_descriptor from;
     file_descriptor to;
     std::array<char, 64> buf;
+    single_io(file_descriptor from_, file_descriptor to_): from(from_), to(to_), buf() {}
 };
 
 

@@ -8,7 +8,6 @@
 
 #include "worker.hpp"
 #include "file_descriptor.hpp"
-#include "session.hpp"
 
 namespace hse {
 
