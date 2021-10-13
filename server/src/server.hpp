@@ -18,12 +18,14 @@ class server
     std::vector<worker> workers;
     std::vector<std::thread> worker_threads;
 
+    std::string shell;
+
     void handle_accept(worker& worker_, worker::io_result_t);
     void static handle_read (std::shared_ptr<single_io> io_op, worker& worker_, worker::io_result_t res);
     void static handle_write(worker& worker_, worker::io_result_t res);
 
 public:
-    server(std::uint32_t nworkers, std::uint32_t uring_entires=4096, std::uint32_t uring_flags=0);
+    server(std::string shell_, std::uint32_t nworkers, std::uint32_t uring_entires=4096, std::uint32_t uring_flags=0);
     void start();
 };
 

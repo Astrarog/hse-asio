@@ -125,7 +125,7 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
     // TO DO:
 
-    auto [from_shell, to_shell] = create_shell("/bin/bash");
+    auto [from_shell, to_shell] = create_shell(this->shell);
 
     // ================================================================================================ //
 
@@ -162,7 +162,7 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
 }
 
-server::server(std::uint32_t nworkers, std::uint32_t uring_entires, std::uint32_t uring_flags): workers(nworkers){
+server::server(std::string shell_, std::uint32_t nworkers, std::uint32_t uring_entires, std::uint32_t uring_flags): shell(std::move(shell_)), workers(nworkers){
 
     accept_fd = socket(AF_INET6, SOCK_STREAM, 0);
 
