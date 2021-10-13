@@ -7,7 +7,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
-#include <array>
+#include <vector>
 #include <iostream>
 
 #include <liburing.h>
@@ -18,19 +18,29 @@
 namespace hse {
 
 
+struct single_io_end
+{
+    int from;
+    int to;
+    std::vector<char> buf;
+    single_io_end(int from_, int to_, std::vector<char> buf_): from(from_), to(to_), buf(std::move(buf_)) {}
+};
+
 struct single_io
 {
-    file_descriptor from;
-    file_descriptor to;
-    std::array<char, 64> buf;
-    single_io(file_descriptor from_, file_descriptor to_): from(from_), to(to_), buf() {}
+    std::shared_ptr<file_descriptor> from;
+    std::shared_ptr<file_descriptor> to;
+    std::vector<char> buf;
+    single_io(int from_, int to_): from(std::make_shared<file_descriptor>(from_)),
+                                                           to(std::make_shared<file_descriptor>(to_)),
+                                                           buf(64) {}
 };
 
 
 class worker
 {
 public:
-    using io_result_t = std::uint32_t;
+    using io_result_t = std::int32_t;
     using token_t = std::uint64_t;
     using handler_t = std::function<void(worker&, io_result_t)>;
 

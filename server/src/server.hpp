@@ -19,7 +19,7 @@ class server
     std::vector<std::thread> worker_threads;
 
     void handle_accept(worker& worker_, worker::io_result_t);
-    void static handle_read (std::unique_ptr<single_io> io_op, worker& worker_, worker::io_result_t res);
+    void static handle_read (std::shared_ptr<single_io> io_op, worker& worker_, worker::io_result_t res);
     void static handle_write(worker& worker_, worker::io_result_t res);
 
 public:

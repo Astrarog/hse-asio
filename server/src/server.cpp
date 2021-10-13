@@ -21,7 +21,7 @@ void server::handle_write(worker& worker_, worker::io_result_t count_written){
 
 }
 
-void server::handle_read(std::unique_ptr<single_io> io_op, worker& worker_, worker::io_result_t count_read) {
+void server::handle_read(std::shared_ptr<single_io> io_op, worker& worker_, worker::io_result_t count_read) {
 
     // connection closed
     if(count_read==0)
@@ -34,13 +34,16 @@ void server::handle_read(std::unique_ptr<single_io> io_op, worker& worker_, work
     // we have read data somewhere
     // now we need to write data further
 
-    int from = io_op->from, to = io_op->to;
+    int from = *(io_op->from), to = *(io_op->to);
 
-    auto& write_buf = io_op->buf;
+    std::shared_ptr<single_io_end> write_op = std::make_shared<single_io_end>(from, to, std::move(io_op->buf));
+    auto& write_buf = write_op->buf;
+    write_buf.resize(count_read);
+
     std::span<std::byte> write_span {reinterpret_cast<std::byte*>(write_buf.data()),
                                      write_buf.size()};
 
-    std::shared_ptr<single_io> write_op = std::move( io_op );
+
     std::shared_ptr<worker::handler_t> write_done = std::make_shared<worker::handler_t>(
         [write_op](worker& w, worker::io_result_t cw) {
             server::handle_write(w, cw);
@@ -54,14 +57,15 @@ void server::handle_read(std::unique_ptr<single_io> io_op, worker& worker_, work
 
     // and read again with new io_op (cause more data may be awailable)
 
-    std::unique_ptr<single_io> new_read_io = std::make_unique<single_io>(from, to);
+    std::shared_ptr<single_io> new_read_io = io_op;
     auto& new_read_buf = new_read_io->buf;
+    new_read_buf.resize(64);
     std::span<std::byte> new_read_span {reinterpret_cast<std::byte*>(new_read_buf.data()),
                                         new_read_buf.size()};
 
     std::shared_ptr<worker::handler_t> next_read = std::make_shared<worker::handler_t>(
-        [&new_read_io](worker& w, worker::io_result_t cr) mutable {
-            server::handle_read(std::move(new_read_io), w, cr);
+        [new_read_io](worker& w, worker::io_result_t cr) mutable {
+            server::handle_read(new_read_io, w, cr);
         }
     );
 
@@ -87,40 +91,40 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
 
     // TO DO:
-    int pipe_in = 0, pipe_out = 1;
+    int from_pipe = 0, to_pipe = 1;
 
     // ================================================================================================ //
 
-    std::unique_ptr<single_io> socket_to_shell = std::make_unique<single_io>(socket_fd, pipe_out);
+    std::shared_ptr<single_io> socket_to_shell = std::make_shared<single_io>(socket_fd, to_pipe);
     auto& socket_buf = socket_to_shell->buf;
     std::span<std::byte> socket_span {reinterpret_cast<std::byte*>(socket_buf.data()),
                                    socket_buf.size()};
 
     std::shared_ptr<worker::handler_t> start_socket_read = std::make_shared<worker::handler_t>(
-        [&socket_to_shell](worker& w, worker::io_result_t cr) mutable {
-            server::handle_read(std::move(socket_to_shell), w, cr);
+        [socket_to_shell](worker& w, worker::io_result_t cr) mutable {
+            server::handle_read(socket_to_shell, w, cr);
         }
     );
 
-    worker_.async_read_some(pipe_in,
+    worker_.async_read_some(socket_fd,
                             socket_span,
                             start_socket_read);
 
     // ================================================================================================ //
 
-//    std::unique_ptr<single_io> shell_to_socket = std::make_unique<single_io>(socket_fd, pipe_out);
-//    auto& shell_buf = shell_to_socket->buf;
-//    std::span<std::byte> shell_span {reinterpret_cast<std::byte*>(shell_span.data()),
-//                                     shell_span.size()};
-//    std::shared_ptr<worker::handler_t> start_shell_read = std::make_shared<worker::handler_t>(
-//        [&shell_to_socket](worker& w, worker::io_result_t cr) mutable {
-//            server::handle_read(std::move(shell_to_socket), w, cr);
-//        }
-//    );
+    std::shared_ptr<single_io> shell_to_socket = std::make_shared<single_io>(from_pipe, socket_fd);
+    auto& shell_buf = shell_to_socket->buf;
+    std::span<std::byte> shell_span {reinterpret_cast<std::byte*>(shell_buf.data()),
+                                     shell_buf.size()};
+    std::shared_ptr<worker::handler_t> start_shell_read = std::make_shared<worker::handler_t>(
+        [shell_to_socket](worker& w, worker::io_result_t cr) mutable {
+            server::handle_read(shell_to_socket, w, cr);
+        }
+    );
 
-//    worker_.async_read_some(socket_fd,
-//                            shell_span,
-//                            start_shell_read);
+    worker_.async_read_some(from_pipe,
+                            shell_span,
+                            start_shell_read);
 
 }
 

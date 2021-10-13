@@ -82,6 +82,7 @@ worker& worker::async_read_some (int fd, std::span<std::byte> buffer, std::share
     io_uring_submit(&ring);
 
     debug_log_sqe(sqe, "read");
+    BOOST_LOG_TRIVIAL(debug) << "   FD=" << fd ;
 
     return *this;
 
@@ -103,7 +104,8 @@ worker& worker::async_write_some(int fd, std::span<std::byte> buffer, std::share
 
     io_uring_submit(&ring);
 
-    debug_log_sqe(sqe, "read");
+    debug_log_sqe(sqe, "write");
+    BOOST_LOG_TRIVIAL(debug) << "   FD=" << fd ;
 
     return *this;
 
@@ -127,6 +129,7 @@ worker& worker::async_read_some (int fd,
     io_uring_submit(&ring);
 
     debug_log_sqe(sqe, "read");
+    BOOST_LOG_TRIVIAL(debug) << "   FD=" << fd ;
 
     return *this;
 
@@ -150,6 +153,7 @@ worker& worker::async_write_some(int fd,
     io_uring_submit(&ring);
 
     debug_log_sqe(sqe, "write");
+    BOOST_LOG_TRIVIAL(debug) << "   FD=" << fd ;
 
     return *this;
 }
