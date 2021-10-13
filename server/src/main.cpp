@@ -43,7 +43,7 @@ int initialize_socket(){
 
 int main(){
 
-    server telnet_like(1);
+    server telnet_like(10);
 
     telnet_like.start();
 

@@ -7,7 +7,7 @@
 #include "worker.hpp"
 #include "server.hpp"
 
-//socket specific
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -16,8 +16,7 @@ namespace hse {
 
 void server::handle_write(worker& worker_, worker::io_result_t count_written){
 
-    if(count_written<0)
-        throw std::system_error({errno, std::system_category()}, "Negative write");
+    // Do nothing just relax
 
 }
 
@@ -75,6 +74,40 @@ void server::handle_read(std::shared_ptr<single_io> io_op, worker& worker_, work
 }
 
 
+std::pair<int, int> create_shell(const std::string& shell){
+    int shell_read_pipe[2];
+    int shell_write_pipe[2];
+
+    pipe(shell_read_pipe);
+    pipe(shell_write_pipe);
+
+    auto [shell_read, socket_write] = shell_read_pipe;
+    auto [socket_read, shell_write] = shell_write_pipe;
+
+    if(fork()==0){
+        // child
+        dup2(shell_read, 0);
+        dup2(shell_write, 1);
+        dup2(shell_write, 2);
+
+        close(shell_read);
+        close(shell_write);
+        close(socket_read);
+        close(socket_write);
+
+        const char* shell_name = shell.c_str();
+
+        execl(shell_name, shell_name, nullptr);
+    }
+    else {
+        close(shell_read);
+        close(shell_write);
+    }
+
+    return {socket_read, socket_write};
+
+}
+
 void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
     using namespace std::placeholders;
 
@@ -91,11 +124,12 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
 
     // TO DO:
-    int from_pipe = 0, to_pipe = 1;
+
+    auto [from_shell, to_shell] = create_shell("/bin/bash");
 
     // ================================================================================================ //
 
-    std::shared_ptr<single_io> socket_to_shell = std::make_shared<single_io>(socket_fd, to_pipe);
+    std::shared_ptr<single_io> socket_to_shell = std::make_shared<single_io>(socket_fd, to_shell);
     auto& socket_buf = socket_to_shell->buf;
     std::span<std::byte> socket_span {reinterpret_cast<std::byte*>(socket_buf.data()),
                                    socket_buf.size()};
@@ -112,7 +146,7 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
     // ================================================================================================ //
 
-    std::shared_ptr<single_io> shell_to_socket = std::make_shared<single_io>(from_pipe, socket_fd);
+    std::shared_ptr<single_io> shell_to_socket = std::make_shared<single_io>(from_shell, socket_fd);
     auto& shell_buf = shell_to_socket->buf;
     std::span<std::byte> shell_span {reinterpret_cast<std::byte*>(shell_buf.data()),
                                      shell_buf.size()};
@@ -122,7 +156,7 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
         }
     );
 
-    worker_.async_read_some(from_pipe,
+    worker_.async_read_some(from_shell,
                             shell_span,
                             start_shell_read);
 
