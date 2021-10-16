@@ -34,7 +34,10 @@ worker& worker::get_next_complitted(){
 
     auto handler = token_table[token];
 
-    (*handler)(*this, result);
+    try {
+        (*handler)(*this, result);
+    }
+    catch (...) { }
 
     token_table.erase(token);
 

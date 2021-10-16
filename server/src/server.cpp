@@ -16,6 +16,8 @@ namespace hse {
 
 void server::handle_write(worker& worker_, worker::io_result_t count_written){
 
+    if (count_written < 0)
+        throw std::system_error({errno, std::system_category()}, "Negative read");
     // Do nothing just relax
 
 }
