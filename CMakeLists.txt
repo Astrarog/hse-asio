@@ -12,7 +12,9 @@ set_property(GLOBAL
 
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Boost 1.75 REQUIRED COMPONENTS program_options chrono container context log thread)
+find_package(Boost 1.75 REQUIRED COMPONENTS program_options log)
+
+find_package(Threads REQUIRED)
 
 add_subdirectory(server)
 #add_subdirectory(clent)
