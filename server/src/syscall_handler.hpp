@@ -3,7 +3,8 @@
 #include <string>
 #include <functional>
 #include <cerrno>
-#include <optional>
+#include <system_error>
+#include <variant>
 
 namespace hse {
 
@@ -47,7 +48,7 @@ namespace hse {
 //
 // * void * ret = syscall_handler(mmap)
 // *              .set_description("Description of error condition")
-// *              .set_error_return(-1)
+// *              .set_error_condition(-1)
 // *              .run(arg1, arg2, ...);
 //
 // or like
@@ -59,14 +60,39 @@ namespace hse {
 
 template<class R, class... Args >
 class syscall_handler{
-private:
-    std::string error_description="Error";
-    bool has_error_return = false;
-    std::function<R (Args...)> syscall;
-    std::optional<std::function<R()>> error_condition = std::nullopt;
-
-
 public:
+    enum SH_ERROR_CONDITION{
+        SINGLE_VALUE,
+        PREDICATE,
+        NO_CONITION
+    };
+
+private:
+    using err_pred_t = std::function<bool(R)>;
+    std::string error_description="Syscall error";
+    SH_ERROR_CONDITION error_contion_type = NO_CONITION;
+    std::function<R (Args...)> syscall;
+    std::variant<R,
+                 std::monostate,
+                 std::function<bool(R)>>  error_condition;
+
+
+    void check_error(R ret){
+        switch (error_contion_type) {
+            case SINGLE_VALUE :
+                if(std::get<R>(error_condition) == ret)
+                    throw std::system_error({errno, std::system_category()}, error_description);
+                break;
+
+            case PREDICATE :
+                if(std::get<std::function<bool(R)>>(error_condition) (ret))
+                    throw std::system_error({errno, std::system_category()}, error_description);
+                break;
+
+        }
+    }
+public:
+
     syscall_handler(R sys(Args...)): syscall(sys){}
 
     syscall_handler& set_description(std::string desc) {
@@ -74,20 +100,24 @@ public:
         return *this;
     }
 
-    template<typename T>
-    syscall_handler& set_error_return_value(T err_val) {
-        has_error_return = true;
-        error_condition  = [err_val]{ return err_val; };
+    template<typename Ret>
+    syscall_handler& set_error_condition(R err_val) {
+        error_contion_type = SINGLE_VALUE;
+        error_condition  = static_cast<R>(err_val);
+        return *this;
+    }
+
+    syscall_handler& set_error_condition(std::function<bool(R)> err_predicate) {
+        error_contion_type = PREDICATE;
+        error_condition = err_predicate;
         return *this;
     }
 
     R run(Args... args){
         R ret = this->syscall(args...);
-        if(has_error_return){
-            if((*error_condition)() == ret){
-                throw std::system_error({errno, std::system_category()}, error_description);
-            }
-        }
+
+        check_error(ret);
+
         return ret;
     }
 

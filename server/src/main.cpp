@@ -1,50 +1,74 @@
+#include <cstdlib>
 #include <string>
-#include <span>
-#include <cstddef>
-#include <string_view>
+#include <cerrno>
+#include <csignal>
+#include <iomanip>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <unistd.h>
 
-#include "io_operation.hpp"
-#include "io_uring_driver.hpp"
+#include <boost/program_options.hpp>
+#include <boost/log/sources/global_logger_storage.hpp>
+
+#include "server.hpp"
 
 
+namespace po = boost::program_options;
 using namespace hse;
 
-int main(){
-    int fd = open("test1.txt", O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK , 0666);
-    iovec iov[3];
 
-    const char *buf[] = {
-                    "The term buccaneer comes from the word boucan.\n",
-                    "A boucan is a wooden frame used for cooking meat.\n",
-                    "Buccaneer is the West Indies name for a pirate.\n" };
+void sigint_handler(int /* signum */){
+    std::cout << std::endl;
+    std::cout << "Received end signal. Closing..." << std::endl;
+    std::exit(0);
+}
 
-    for (int i = 0; i < 3; i++) {
-            iov[i].iov_base = reinterpret_cast<std::byte*>(const_cast<char*>(buf[i]));
-            iov[i].iov_len = std::string(buf[i]).size() + 1;
+int main(int argc, char* argv[]){
+
+    std::uint32_t threads;
+    std::string shell;
+
+    char* shell_env = std::getenv("SHELL");
+    auto hc = std::thread::hardware_concurrency();
+    std::uint32_t max_threads = std::max(hc, 1u);
+
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help,h", "Show help")
+        ("threads,t", po::value<std::uint32_t>(&threads)->default_value(max_threads), "Set the number of threads")
+        ("shell,s", po::value<std::string>(&shell)->default_value("/bin/bash"), "Set the shell. Absolute path required. Environment variable SHELL is used if this switch is not set.")
+    ;
+
+    po::variables_map vm;
+    po::parsed_options parsed = po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+    po::store(parsed, vm);
+    po::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << desc << "\n";
+        return 0;
     }
 
+    if (vm.count("threads") && threads == 0u) {
+        std::cout << "There  should be at least 1 thread of execution. Automaically setting --threads=1." << "\n";
+        threads = 1u;
+    }
 
-    std::span<std::byte> buffer (reinterpret_cast<std::byte*>(iov), 3);
-    io_operation write_std =
-        {io_operation_type::write_vec,
-         buffer, fd, 0};
+    if (vm.count("shell")) {
+        shell = vm["shell"].as<std::string>();
+        if(access(shell.c_str(), X_OK) == -1){
+            std::cout << "Error: " << std::quoted(shell)<< " cannot be executed. Check the filename and its permissions.";
+            return 1;
+        }
+    } else if (shell_env) {
+        shell = shell_env;
+    }
 
+    std::signal(SIGINT, sigint_handler);
+    std::signal(SIGPIPE, SIG_IGN);
 
-    hse::io_uring_driver drv{4096};
+    server telnet_like(std::move(shell), threads);
 
-    auto token0 = drv.register_op();
-    auto token1 = drv.register_op();
-    auto token2 = drv.register_op(write_std);
-    auto token3 = drv.register_op();
-
-    drv.initiate(token1)
-            .wait(token1)
-            .initiate_all()
-            .wait_all();
+    telnet_like.start();
 
 
 }
