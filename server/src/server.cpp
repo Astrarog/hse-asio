@@ -99,7 +99,7 @@ std::pair<int, int> create_shell(const std::string& shell){
 
         const char* shell_name = shell.c_str();
 
-        execl(shell_name, shell_name, nullptr);
+        execlp(shell_name, shell_name, nullptr);
     }
     else {
         close(shell_read);
