@@ -29,6 +29,7 @@ worker::~worker(){
 worker& worker::get_next_complitted(){
 
     io_uring_cqe& completed_op = compilted_tasks_receiver.show_next();
+
     token_t token = completed_op.user_data;
     io_result_t result = completed_op.res;
 

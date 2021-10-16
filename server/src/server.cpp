@@ -199,16 +199,19 @@ server::server(std::string shell_, std::uint32_t nworkers, std::uint32_t uring_e
 }
 void server::start(){
 
-    if(workers.size()==1)
-        workers[0].event_loop();
     // and assign each worker to thread
+    // first = current thread
+    bool first = true;
     for (auto& worker: workers){
+        if (first){
+            first = !first;
+            continue;
+        }
         auto start_loop = std::bind(&worker::event_loop, &worker);
         worker_threads.push_back(std::thread{start_loop});
     }
 
-    // and just wait for incoming signals
-    for(;;){}
+    workers[0].event_loop();
 
 }
 

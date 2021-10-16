@@ -2,17 +2,23 @@
 #include <string>
 #include <cerrno>
 #include <csignal>
+#include <iomanip>
+
+#include <unistd.h>
 
 #include <boost/program_options.hpp>
+#include <boost/log/sources/global_logger_storage.hpp>
 
 #include "server.hpp"
+
 
 namespace po = boost::program_options;
 using namespace hse;
 
 
 void sigint_handler(int /* signum */){
-    std::cout << "Closing..." << std::endl;
+    std::cout << std::endl;
+    std::cout << "Received end signal. Closing..." << std::endl;
     std::exit(0);
 }
 
@@ -23,13 +29,13 @@ int main(int argc, char* argv[]){
 
     char* shell_env = std::getenv("SHELL");
     auto hc = std::thread::hardware_concurrency();
-    std::uint32_t max_threads = ( hc>0 ? std::max(hc-1u, 1u): 1);
+    std::uint32_t max_threads = std::max(hc, 1u);
 
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help,h", "Show help")
-        ("threads,t", po::value<std::uint32_t>(&threads)->default_value(max_threads), "set compression level")
-        ("shell,s", po::value<std::string>(&shell), "set compression level")
+        ("threads,t", po::value<std::uint32_t>(&threads)->default_value(max_threads), "Set the number of threads")
+        ("shell,s", po::value<std::string>(&shell)->default_value("/bin/bash"), "Set the shell. Absolute path required. Environment variable SHELL is used if this switch is not set.")
     ;
 
     po::variables_map vm;
@@ -48,17 +54,19 @@ int main(int argc, char* argv[]){
     }
 
     if (vm.count("shell")) {
-
+        shell = vm["shell"].as<std::string>();
+        if(access(shell.c_str(), X_OK) == -1){
+            std::cout << "Error: " << std::quoted(shell)<< " cannot be executed. Check the filename and its permissions.";
+            return 1;
+        }
+    } else if (shell_env) {
+        shell = shell_env;
     }
-
-    shell = ( vm.count("shell")
-                ? vm["shell"].as<std::string>()
-                : (shell_env ? shell_env : "/bin/bash" ));
 
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGPIPE, SIG_IGN);
 
-    server telnet_like(std::move(shell), 1);
+    server telnet_like(std::move(shell), threads);
 
     telnet_like.start();
 

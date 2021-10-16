@@ -17,6 +17,9 @@ io_uring_cqe& cqe_receiver::show_next(){
     // check the difference between wait and peek
     io_uring_wait_cqe(&ring, &cqe);
 
+    if (!cqe)
+        throw "No cqe";
+
     BOOST_LOG_TRIVIAL(debug) << "CQE Arrived. ";
     BOOST_LOG_TRIVIAL(debug) << "   CQE=" << cqe ;
     BOOST_LOG_TRIVIAL(debug) << "   TOKEN=" << cqe->user_data ;
