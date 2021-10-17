@@ -6,6 +6,8 @@
 #include <cerrno>
 #include <thread>
 
+#include <netinet/in.h>
+
 #include "worker.hpp"
 #include "file_descriptor.hpp"
 
@@ -25,10 +27,12 @@ class server
     void static handle_write(worker& worker_, worker::io_result_t res);
 
 public:
-    server(std::string shell_,
+    server(std::string shell_ = "/bin/bash",
            std::uint32_t nworkers=std::thread::hardware_concurrency(),
            std::uint32_t uring_entires=4096,
-           std::uint32_t uring_flags=0);
+           std::uint32_t uring_flags=0,
+           in_addr ip_address = static_cast<in_addr>(INADDR_LOOPBACK),
+           in_port_t port = 8888);
     void start();
 };
 

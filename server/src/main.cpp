@@ -5,9 +5,9 @@
 #include <iomanip>
 
 #include <unistd.h>
+#include <netinet/in.h>
 
 #include <boost/program_options.hpp>
-#include <boost/log/sources/global_logger_storage.hpp>
 
 #include "server.hpp"
 
@@ -26,6 +26,10 @@ int main(int argc, char* argv[]){
 
     std::uint32_t threads;
     std::string shell;
+    std::uint32_t enteties = 4096;
+    std::uint32_t flags = 0;
+    in_addr ip_address = static_cast<in_addr>(INADDR_LOOPBACK);
+    in_port_t port = 8888u;
 
     char* shell_env = std::getenv("SHELL");
     auto hc = std::thread::hardware_concurrency();
@@ -66,7 +70,12 @@ int main(int argc, char* argv[]){
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGPIPE, SIG_IGN);
 
-    server telnet_like(std::move(shell), threads);
+    server telnet_like(std::move(shell),
+                       threads,
+                       enteties,
+                       flags,
+                       ip_address,
+                       port);
 
     telnet_like.start();
 

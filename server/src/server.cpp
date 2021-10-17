@@ -1,5 +1,6 @@
 #include <span>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <functional>
 
@@ -164,19 +165,44 @@ void server::handle_accept(worker& worker_, worker::io_result_t socket_fd) {
 
 }
 
-server::server(std::string shell_, std::uint32_t nworkers, std::uint32_t uring_entires, std::uint32_t uring_flags): shell(std::move(shell_)), workers(nworkers){
+static sockaddr_in construct_address_ipv4(in_addr addr, in_port_t port)
+{
+    sockaddr_in address;
+    std::memset(&address, 0, sizeof (address));
+    address.sin_family = AF_INET;
+    std::memcpy(&address.sin_addr, &addr, sizeof(in_addr));
+    address.sin_port = port;
+    return address;
+}
 
-    accept_fd = socket(AF_INET6, SOCK_STREAM, 0);
+static int create_socket()
+{
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-    if(accept_fd < 0)
+    if(sock_fd < 0)
         throw std::system_error({errno, std::system_category()}, "Negative socket call");
-    sockaddr_in6 ipv6_addr{};
-    ipv6_addr.sin6_addr = in6addr_loopback;
-    ipv6_addr.sin6_port = 8888;
+
+    static constexpr int sockoptval = 1;
+    if (::setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &sockoptval, sizeof (sockoptval)) == -1)
+        std::system_error({errno, std::system_category()}, "Negative setsockopt call");
+    return sock_fd;
+}
+
+server::server(std::string shell_,
+               std::uint32_t nworkers,
+               std::uint32_t uring_entires,
+               std::uint32_t uring_flags,
+               in_addr ip_address,
+               in_port_t port):
+    shell(std::move(shell_)), workers(nworkers){
+
+    accept_fd = create_socket();
+
+    sockaddr_in ip_addr = construct_address_ipv4(ip_address, htons(port));
 
     syscall_handler(bind).set_description("Bind socket call")
 //                         .set_error_condition([](int ret){ return ret<0;})
-                         .run(accept_fd, reinterpret_cast<sockaddr*>(&ipv6_addr), sizeof (ipv6_addr));
+                         .run(accept_fd, reinterpret_cast<sockaddr*>(&ip_addr), sizeof (ip_addr));
 
 
     syscall_handler(listen).set_description("Listen socket call")
@@ -187,8 +213,8 @@ server::server(std::string shell_, std::uint32_t nworkers, std::uint32_t uring_e
 
     using namespace std::placeholders;
     for (auto& worker: workers){
-        std::shared_ptr<sockaddr_in6> incoming_socket_adderss = std::make_shared<sockaddr_in6>();
-        std::shared_ptr<socklen_t> incoming_socket_adderss_len = std::make_shared<socklen_t>(sizeof (sockaddr_in6));
+        std::shared_ptr<sockaddr_in> incoming_socket_adderss = std::make_shared<sockaddr_in>();
+        std::shared_ptr<socklen_t> incoming_socket_adderss_len = std::make_shared<socklen_t>(sizeof (sockaddr_in));
         auto initial_accept = std::bind(&server::handle_accept, this, _1, _2);
         worker.async_accept(accept_fd,
                             reinterpret_cast<sockaddr *>(&incoming_socket_adderss),
