@@ -17,4 +17,4 @@ find_package(Boost 1.75 REQUIRED COMPONENTS program_options log)
 find_package(Threads REQUIRED)
 
 add_subdirectory(server)
-#add_subdirectory(clent)
+add_subdirectory(client)
