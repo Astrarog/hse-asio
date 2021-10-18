@@ -36,7 +36,7 @@ case $i in
     shift # past argument=value
     ;;
 	--help)
-	echo "Usage: ./run.test.sh [OPTION]..."
+	echo "Usage: ./run_test.sh [OPTION]..."
 	echo "Possible options:"
 	echo "	--sessions-max=VALUE"
 	echo ""
@@ -68,7 +68,7 @@ for ses in $(seq $SESSIONS_MIN $SESSIONS_STEP $SESSIONS_MAX)
 do
 	for bs in $(seq $BSIZE_MIN $BSIZE_STEP $BSIZE_MAX)
 	do
-		./build-hse-asio-GCC-Debug/client/hse-asio-client -p 41483 -a '192.168.1.75' -s $ses -b $bs  $ > $out_file
+		./hse-asio-client -p 41483 -a '192.168.1.75' -s $ses -b $bs >> $out_file
 
 		
 		(( ++progress ))
