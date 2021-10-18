@@ -18,14 +18,10 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/core/noncopyable.hpp>
-
-//#include <boost/asio/bind_executor.hpp>
-//#include <boost/asio/read_until.hpp>
-//#include <boost/asio/strand.hpp>
-//#include <boost/asio/write.hpp>
-//#include <boost/multiprecision/cpp_int.hpp>
+#include <boost/program_options.hpp>
 
 namespace ba = boost::asio;
+namespace po = boost::program_options;
 
 std::string random_data(std::size_t size){
     std::string data;
@@ -109,31 +105,76 @@ public:
 
 int main(int argc, char* argv[]){
 
-    unsigned threads = 1; //std::thread::hardware_concurrency();
-
-    ba::io_context ctx;//{int(threads)};
+    std::int32_t hc = std::thread::hardware_concurrency();
+    std::uint32_t threads = std::thread::hardware_concurrency();
 
     // server endpoint
-    ba::ip::tcp::endpoint ep( ba::ip::make_address("127.0.0.1"), 40385);
+    std::string address;
+    int port;
 
-    std::size_t buffer_size = 512;
 
-    std::size_t nsesssions = 1;
+    std::size_t buffer_size;
+    std::size_t nsesssions;
 
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help,h", "Show help")
+        ("threads,t", po::value<std::uint32_t>(&threads)->default_value(1u), "Set the number of threads")
+        ("address,a", po::value<std::string>(&address)->default_value("127.0.0.1"), "Set the address of server to connect")
+        ("port,p", po::value<int>(&port)->default_value(8888), "Set the port of server to connect")
+        ("bsize,b", po::value<std::size_t>(&buffer_size)->default_value(512u), "Set the size of the data to be transfered")
+        ("sessions,s", po::value<std::size_t>(&nsesssions)->default_value(1u), "Set the number of parallel sessions for simultaneous data transfer")
+    ;
+
+    po::variables_map vm;
+    po::parsed_options parsed = po::command_line_parser(argc, argv).options(desc).allow_unregistered().run();
+    po::store(parsed, vm);
+    po::notify(vm);
+
+    if (vm.count("help")) {
+        std::cout << desc << "\n";
+        return 0;
+    }
+
+    if (vm.count("threads") && threads == 0u) {
+        std::cout << "There  should be at least 1 thread of execution. Automaically setting --threads=1." << "\n";
+        threads = 1u;
+    }
+
+    if (vm.count("port") && port < 0) {
+        std::cout << "Port should be positve number" << "\n";
+        return 1;
+    }
+
+
+    ba::io_context ctx{int(threads)};
+
+    ba::ip::tcp::endpoint ep( ba::ip::make_address(address), port);
     std::vector<boost::shared_ptr<session>> all_sessions;
     all_sessions.reserve(nsesssions);
-    for (std::size_t i=0, port=10000; i<nsesssions; ++i){
+    for (std::size_t i=0; i<nsesssions; ++i){
         all_sessions.push_back(boost::make_shared<session>(session(buffer_size, ctx)));
         all_sessions[i]->start(ep);
     }
 
 
-//    ba::static_thread_pool tp{threads-1};
-//    for(unsigned i=1;i<threads;++i)
-//        ba::execution::execute(tp.get_executor(), [&]{
-//            ctx.run();
-//        });
+    auto start = std::chrono::steady_clock::now();
+    // Start time mesaurment
+
+    ba::static_thread_pool tp{threads-1};
+    for(unsigned i=1;i<threads;++i)
+        ba::execution::execute(tp.get_executor(), [&]{
+            ctx.run();
+        });
     ctx.run();
-    std::cout << "Done";
+
+    auto end = std::chrono::steady_clock::now();
+
+    std::chrono::duration<double, std::milli> time = end-start;
+
+// format
+// threads:sessions:nbytes:time(ms)
+    std::cout << threads << ':' << nsesssions << ':' << buffer_size << ':' << time.count() << std::endl;
+
     return 0;
 }
