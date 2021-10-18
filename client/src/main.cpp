@@ -63,7 +63,7 @@ public:
     void handle_connect(const boost::system::error_code& error){
 
         if (error)
-            throw std::logic_error(error.message());
+            return;
 
         // we need to write data
 
@@ -78,7 +78,7 @@ public:
     void handle_write(const boost::system::error_code& error, std::size_t transfered){
 
         if (error)
-            throw std::logic_error(error.message());
+            return;
 
 //         we need to read data back
 
@@ -95,7 +95,7 @@ public:
     void handle_read(const boost::system::error_code& error, std::size_t transfered){
 
         if (error)
-            throw std::logic_error(error.message());
+            return;
 
         // just relax all was done
         status = READ;
@@ -172,9 +172,15 @@ int main(int argc, char* argv[]){
 
     std::chrono::duration<double, std::milli> time = end-start;
 
+    std::uint64_t started   = std::count_if(all_sessions.begin(), all_sessions.end(), [](boost::shared_ptr<session> s){return s->status == session::STARTED;})
+                , connected = std::count_if(all_sessions.begin(), all_sessions.end(), [](boost::shared_ptr<session> s){return s->status == session::CONNECTED;})
+                , write     = std::count_if(all_sessions.begin(), all_sessions.end(), [](boost::shared_ptr<session> s){return s->status == session::WRITE;})
+                , read      = std::count_if(all_sessions.begin(), all_sessions.end(), [](boost::shared_ptr<session> s){return s->status == session::READ;})
+            ;
+
 // format
-// threads:sessions:nbytes:time(ms)
-    std::cout << threads << ':' << nsesssions << ':' << buffer_size << ':' << time.count() << std::endl;
+// threads:sessions:nbytes:time(ms):STARTED:CONNECTED:WRITE:READ
+    std::cout << threads << ':' << nsesssions << ':' << buffer_size << ':' << time.count() << ':' << started << ':' << connected << ':' << write << ':' << read  << std::endl;
 
     return 0;
 }
